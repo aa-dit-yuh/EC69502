@@ -1,10 +1,15 @@
 #include <iostream>
 #include <fstream>
+#include <string>
 #include <vector>
 #include <map>
 
-using std::ifstream;
-using std::ofstream;
+#ifdef _WIN32
+// Visual Studio specific typedefs
+typedef unsigned __int8 uint32_t;
+typedef unsigned __int16 uint16_t;
+typedef int uint32_t;
+#endif
 
 const uint8_t null = 0x00;
 const int DIB_HEADER_OFFSET = 0x0e;
@@ -21,9 +26,10 @@ const std::map<uint32_t, std::string> COMPRESSION_METHODS = {
     {13,"BI_CMYKRLE4"},
 };
 
-class ibstream : public ifstream {
+
+class ibstream : public std::ifstream {
 public:
-    using ifstream::ifstream;
+    ibstream(const char *filename, ios_base::openmode mode): std::ifstream(filename, mode) {}
 
     /* Overload the >> operator to perform a reinterpret cast.
      * In other words, performs a cast of a series of bytes equal to
@@ -41,9 +47,10 @@ public:
     }
 };
 
-class obstream : public ofstream {
+
+class obstream : public std::ofstream {
 public:
-    using ofstream::ofstream;
+    obstream(const char *filename, ios_base::openmode mode): std::ofstream(filename, mode) {}
 
     /* Overload the << operator to perform a reinterpret cast.
      * In other words, performs a cast of a series of bytes equal to
@@ -105,7 +112,6 @@ int main(int argc, char* argv[])
      *   - NUMBER OF COLORS IN PALETTE (4 byte integer) at 0x
      *   - NUMBER OF IMPORTANT COLORS (4 byte integer) at 0x
      */
-    is.seekg(DIB_HEADER_OFFSET);                                                // Move input stream to DIB HEADER
     uint32_t DIB_HEADER_SIZE; is >> DIB_HEADER_SIZE ;
     uint32_t WIDTH          ; is >> WIDTH           ;
     uint32_t HEIGHT         ; is >> HEIGHT          ;
@@ -136,7 +142,7 @@ int main(int argc, char* argv[])
 
     is.seekg(PIXELARRAY_OFFSET);                                                // Move input stream to PIXEL ARRAY
 
-    // // Dynamically allocate a single channel matrix
+    // Dynamically allocate a single channel matrix
     std::vector<std::vector<uint8_t>> grayscale (HEIGHT, std::vector<uint8_t>(WIDTH));
     typedef std::vector<std::vector<uint8_t>>::size_type vec_sz;
 
@@ -149,17 +155,15 @@ int main(int argc, char* argv[])
         std::vector<std::vector<uint8_t>> red   (HEIGHT, std::vector<uint8_t>(WIDTH));
         std::vector<std::vector<uint8_t>> green (HEIGHT, std::vector<uint8_t>(WIDTH));
         std::vector<std::vector<uint8_t>> blue  (HEIGHT, std::vector<uint8_t>(WIDTH));
-        char padding[8];                                                        // Temporary string to store padding
 
         std::cout << "Image Pixel Array (R,G,B):" << std::endl;
         for (vec_sz i = 0; i != HEIGHT; ++i)                                    // Raster scan
             for (vec_sz j = 0; j != WIDTH; ++j)
                 is >> blue[HEIGHT - 1 - i][j] >> green[HEIGHT - 1 - i][j] >> red[HEIGHT - 1 - i][j];
 
-        for (vec_sz i = 0; i != HEIGHT; ++i) {
+        for (vec_sz i = 0; i != HEIGHT; ++i) {                                  // Print RGB image
             for (vec_sz j = 0; j != WIDTH; ++j) {
                 if (i <= 3 && j <= 3)
-                    // Padding?
                     std::cout << "(" << +red[i][j] << "," << +green[i][j] << "," << +blue[i][j] << ")\t";
             }
             if (i <= 3)
@@ -172,7 +176,7 @@ int main(int argc, char* argv[])
             for (vec_sz j = 0; j != WIDTH; ++j)
                 grayscale[i][j] = (red[i][j]*0.2126 + green[i][j]*0.7152 + blue[i][j]*0.0722);   // BT.709 specification
 
-        // Update header specification
+        // Update header specification for grayscale image
         int PALETTE_SIZE = 4 * 256;
         FILE_SIZE = (FILE_SIZE - IMG_SIZE) + IMG_SIZE/3 + PALETTE_SIZE;
         DEPTH = DEPTH/3;
@@ -180,7 +184,7 @@ int main(int argc, char* argv[])
         PIXELARRAY_OFFSET += PALETTE_SIZE;
     }
 
-    std::cout << "Grayscale Pixel Array (I):" << std::endl;                     // Print Grayscale Image
+    std::cout << "Grayscale Pixel Array (I):" << std::endl;                     // Print grayscale image
     for (vec_sz i = 0; i != HEIGHT; ++i) {
         for (vec_sz j = 0; j != WIDTH; ++j) {
             if (i <= 3 && j <= 3)
@@ -194,14 +198,14 @@ int main(int argc, char* argv[])
 
     obstream os(argv[2], std::ios::out|std::ios::binary);                       // Create output BMP file
 
-    os.seekp(0x00); os.write(&SIGNATURE[0], 2);                                 // Write the Bitmap File Header
+    os.seekp(0x00); os.write(&SIGNATURE[0], 2);                                 // Write the BITMAPFILEHEADER
     os.seekp(0x02); os << FILE_SIZE           ;
     os.seekp(0x0a); os << PIXELARRAY_OFFSET   ;
 
-    os << DIB_HEADER_SIZE << HEIGHT << WIDTH << PLANES <<DEPTH << COMPRESSION
+    os << DIB_HEADER_SIZE << HEIGHT << WIDTH << PLANES <<DEPTH << COMPRESSION   // Write the BITMAPINFOHEADER
        << IMG_SIZE << VERTICAL_RES << HORIZONTAL_RES << COLOR_PALETTE << IMP_COLORS;
 
-    os << null << null << null << null;
+    os << null << null << null << null;                                         // Write the grayscale colour palette
     for(uint8_t i = 1; i != 0; ++i) {
         os << i << i << i << null;
     }
