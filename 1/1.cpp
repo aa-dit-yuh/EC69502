@@ -1,108 +1,56 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <map>
-
-#ifdef _WIN32
-// Visual Studio specific typedefs
-typedef unsigned __int8 uint32_t;
-typedef unsigned __int16 uint16_t;
-typedef int uint32_t;
-#endif
+#include <cstdint>
 
 const uint8_t null = 0x00;
-const int DIB_HEADER_OFFSET = 0x0e;
-const std::map<uint32_t, std::string> COMPRESSION_METHODS = {
-    {0, "BI_RGB"},
-    {1, "BI_RLE8"},
-    {2, "BI_RLE4"},
-    {3, "BI_BITFIELDS"},
-    {4, "BI_JPEG"},
-    {5, "BI_PNG"},
-    {6, "BI_ALPHABITFIELDS"},
-    {11,"BI_CMYK"},
-    {12,"BI_CMYKRLE8"},
-    {13,"BI_CMYKRLE4"},
-};
 
-
-class ibstream : public std::ifstream {
-public:
-    ibstream(const char *filename, ios_base::openmode mode): std::ifstream(filename, mode) {}
+struct bstream : public std::fstream {
+    bstream(const char *filename, ios_base::openmode mode): std::fstream(filename, mode) {}
 
     /* Overload the >> operator to perform a reinterpret cast.
      * In other words, performs a cast of a series of bytes equal to
      * the size of the operand.
      */
-    template<typename T>
-    ibstream& operator>>(const T& value) {
-        this->read(reinterpret_cast<char*>(const_cast<T*>(&value)), sizeof(T));
+    template<typename T> bstream& operator>>(const T& value) {
+        read(reinterpret_cast<char*>(const_cast<T*>(&value)), sizeof(T));
         return *this;
     }
-
-    ibstream& operator>>(unsigned char& c) {
-        this->read(reinterpret_cast<char*>(&c), 1);
+    bstream& operator>>(unsigned char& c) {
+        read(reinterpret_cast<char*>(&c), 1);
         return *this;
     }
-};
-
-
-class obstream : public std::ofstream {
-public:
-    obstream(const char *filename, ios_base::openmode mode): std::ofstream(filename, mode) {}
 
     /* Overload the << operator to perform a reinterpret cast.
      * In other words, performs a cast of a series of bytes equal to
      * the size of the operand.
      */
-    template<typename T>
-    obstream& operator<<(const T& value) {
-        this->write(reinterpret_cast<const char*>(&value), sizeof(T));
+    template<typename T> bstream& operator<<(const T& value) {
+        write(reinterpret_cast<const char*>(&value), sizeof(T));
         return *this;
     }
 };
 
-
-int main(int argc, char* argv[])
+struct BitMapFile
 {
-    if (argc != 3) {                                                            // Check for commandline arguments
-        std::cerr << "Incorrect arguments\n"
-                     "Usage: ./a.out <input image path> <output image path>\n";
-        return 1;
-    }
-
-    ibstream is(argv[1], std::ios::in|std::ios::binary);                        // Open the input BMP file stream
-    if (!is.is_open()) {                                                        // Check if file can be opened
-        std::cerr << "Couldn't open input file";
-        return 1;
-    }
-
+public:
     /* BITMAP FILE HEADER
      * Fields:
      *   - SIGNATURE (2 byte string) at 0x00
      *   - FILE SIZE (4 byte integer) at 0x02
      *   - PIXELARRAY OFFSET (4 byte integer) at 0x0a
      */
-    std::string SIGNATURE(2, 0) ; is.seekg(0x00); is.read(&SIGNATURE[0], 2) ;
-    uint32_t FILE_SIZE          ; is.seekg(0x02); is >> FILE_SIZE           ;
-    uint32_t PIXELARRAY_OFFSET  ; is.seekg(0x0a); is >> PIXELARRAY_OFFSET   ;
-
-    std::cout << " ------------------------ \t ------------------------\n"
-                 " |  BITMAP FILE HEADER  | \t |  BITMAP FILE HEADER  |\n"
-                 " ------------------------ \t ------------------------\n"
-                 " | SIGNATURE |            \t |\t" << SIGNATURE << "\t|\n"
-                 " |      FILE SIZE       | \t |\t" <<  FILE_SIZE << "\t\t|\n"
-                 " | RESERVED  | RESERVED | \t | RESERVED  | RESERVED |\n"
-                 " | OFFSET TO PIXELARRAY | \t |\t" << PIXELARRAY_OFFSET << "\t\t|\n"
-                 " ------------------------ \t ------------------------\n"
-              << std::endl;
-
-    /* BITMAPINFOHEADER
+    std::string signature       ;
+    uint32_t fileSize           ;
+    uint32_t pixelArrayOffset   ;
+    /* BitMapINFOHEADER
      * Fields:
      *   - DIB HEADER SIZE (4 byte integer) at 0x0e
-     *   - BITMAP WIDTH (4 byte integer) at 0x12
-     *   - BITMAP HEIGHT (4 byte integer) at 0x16
+     *   - BitMap width (4 byte integer) at 0x12
+     *   - BitMap height (4 byte integer) at 0x16
      *   - PLANES (2 byte integer) at 0x
      *   - DEPTH (2 byte integer) at 0x
      *   - COMPRESSION METHOD (4 byte integer) at 0x
@@ -112,110 +60,196 @@ int main(int argc, char* argv[])
      *   - NUMBER OF COLORS IN PALETTE (4 byte integer) at 0x
      *   - NUMBER OF IMPORTANT COLORS (4 byte integer) at 0x
      */
-    uint32_t DIB_HEADER_SIZE; is >> DIB_HEADER_SIZE ;
-    uint32_t WIDTH          ; is >> WIDTH           ;
-    uint32_t HEIGHT         ; is >> HEIGHT          ;
-    uint16_t PLANES         ; is >> PLANES          ;
-    uint16_t DEPTH          ; is >> DEPTH           ;
-    uint32_t COMPRESSION    ; is >> COMPRESSION     ;
-    uint32_t IMG_SIZE       ; is >> IMG_SIZE        ;
-    uint32_t HORIZONTAL_RES ; is >> HORIZONTAL_RES  ;
-    uint32_t VERTICAL_RES   ; is >> VERTICAL_RES    ;
-    uint32_t COLOR_PALETTE  ; is >> COLOR_PALETTE   ;
-    uint32_t IMP_COLORS     ; is >> IMP_COLORS      ;
+    uint32_t DIBHeaderSize  ;
+    uint32_t width          ;
+    uint32_t height         ;
+    uint16_t planes         ;
+    uint16_t depth          ;
+    uint32_t compression    ;
+    uint32_t imageSize      ;
+    uint32_t horizontalRes  ;
+    uint32_t verticalRes    ;
+    uint32_t colorPalette   ;
+    uint32_t importantColors;
 
-    std::cout << " ------------------------ \t ------------------------\n"
-                 " |   BITMAPINFOHEADER   | \t |   BITMAPINFOHEADER   |\n"
-                 " ------------------------ \t ------------------------\n"
-                 " |    DIB HEADER SIZE   | \t |\t" << DIB_HEADER_SIZE << "\t\t|\n"
-                 " |     BITMAP WIDTH     | \t |\t" << WIDTH << "\t\t|\n"
-                 " |     BITMAP HEIGHT    | \t |\t" << HEIGHT << "\t\t|\n"
-                 " |  PLANES  |   DEPTH   | \t |  " << PLANES << "\t |\t"<< DEPTH << "\t|\n"
-                 " |  COMPRESSION METHOD  | \t |\t" << COMPRESSION_METHODS.at(COMPRESSION) <<"\t\t|\n"
-                 " |      IMAGE SIZE      | \t |\t" << IMG_SIZE << "\t\t|\n"
-                 " | HORIZONTAL RESOLUTION| \t |\t" << HORIZONTAL_RES << "\t\t|\n"
-                 " |  VERTICAL RESOLUTION | \t |\t" << VERTICAL_RES << "\t\t|\n"
-                 " |  COLOURS IN PALETTE  | \t |\t" << COLOR_PALETTE << "\t\t|\n"
-                 " |   IMPORTANT COLORS   | \t |\t" << IMP_COLORS << "\t\t|\n"
-                 " ------------------------ \t ------------------------\n"
-              << std::endl;
+    BitMapFile(): signature("BM") {}
+    BitMapFile(bstream& is): signature("BM") {
+        is.seekg(0x02); is >> fileSize              ;
+        is.seekg(0x0a); is >> pixelArrayOffset      ;
+        is >> DIBHeaderSize                                             // Read BitMapINFOHEADER
+           >> width
+           >> height
+           >> planes
+           >> depth
+           >> compression
+           >> imageSize
+           >> horizontalRes
+           >> verticalRes
+           >> colorPalette
+           >> importantColors;
+    }
 
-    is.seekg(PIXELARRAY_OFFSET);                                                // Move input stream to PIXEL ARRAY
+    void printHeader() {
+        std::cout << " ------------------------ \t ------------------------\n"
+                     " |  BitMap FILE HEADER  | \t |  BitMap FILE HEADER  |\n"
+                     " ------------------------ \t ------------------------\n"
+                     " | SIGNATURE |            \t |\t" << signature << "\t|\n"
+                     " |      FILE SIZE       | \t |\t" <<  fileSize << "\t\t|\n"
+                     " | RESERVED  | RESERVED | \t | RESERVED  | RESERVED |\n"
+                     " | OFFSET TO PIXELARRAY | \t |\t" << pixelArrayOffset << "\t\t|\n"
+                     " ------------------------ \t ------------------------\n"
+                  << std::endl
+                  << " ------------------------ \t ------------------------\n"
+                     " |   BitMapINFOHEADER   | \t |   BitMapINFOHEADER   |\n"
+                     " ------------------------ \t ------------------------\n"
+                     " |    DIB HEADER SIZE   | \t |\t" << DIBHeaderSize << "\t\t|\n"
+                     " |     BITMAP WIDTH     | \t |\t" << width << "\t\t|\n"
+                     " |     BITMAP HEIGHT    | \t |\t" << height << "\t\t|\n"
+                     " |  PLANES  |   DEPTH   | \t |  " << planes << "\t |\t"<< depth << "\t|\n"
+                     " |  COMPRESSION METHOD  | \t |\t" << compression <<"\t\t|\n"
+                     " |      IMAGE SIZE      | \t |\t" << imageSize << "\t\t|\n"
+                     " | HORIZONTAL RESOLUTION| \t |\t" << horizontalRes << "\t\t|\n"
+                     " |  VERTICAL RESOLUTION | \t |\t" << verticalRes << "\t\t|\n"
+                     " |  COLOURS IN PALETTE  | \t |\t" << colorPalette << "\t\t|\n"
+                     " |   IMPORTANT COLORS   | \t |\t" << importantColors << "\t\t|\n"
+                     " ------------------------ \t ------------------------\n"
+                  << std::endl;
+    }
+};
 
-    // Dynamically allocate a single channel matrix
-    std::vector<std::vector<uint8_t>> grayscale (HEIGHT, std::vector<uint8_t>(WIDTH));
-    typedef std::vector<std::vector<uint8_t>>::size_type vec_sz;
+struct ColourBitMapFile : public BitMapFile {
+    typedef std::tuple<uint8_t, uint8_t, uint8_t> Pixel;
+    typedef std::vector<std::vector<Pixel>> BitMap;
+    typedef BitMap::size_type bitmap_sz;
 
-    if (DEPTH == 8) {
-        for (vec_sz i = 0; i != HEIGHT; ++i)
-            for (vec_sz j = 0; j != WIDTH; ++j)
-                is >> grayscale[HEIGHT - 1 - i][j];
-    } else {
-        // Dynamically allocate 3-channel matrices
-        std::vector<std::vector<uint8_t>> red   (HEIGHT, std::vector<uint8_t>(WIDTH));
-        std::vector<std::vector<uint8_t>> green (HEIGHT, std::vector<uint8_t>(WIDTH));
-        std::vector<std::vector<uint8_t>> blue  (HEIGHT, std::vector<uint8_t>(WIDTH));
+    BitMap bitmap;
 
-        std::cout << "Image Pixel Array (R,G,B):" << std::endl;
-        for (vec_sz i = 0; i != HEIGHT; ++i)                                    // Raster scan
-            for (vec_sz j = 0; j != WIDTH; ++j)
-                is >> blue[HEIGHT - 1 - i][j] >> green[HEIGHT - 1 - i][j] >> red[HEIGHT - 1 - i][j];
-
-        for (vec_sz i = 0; i != HEIGHT; ++i) {                                  // Print RGB image
-            for (vec_sz j = 0; j != WIDTH; ++j) {
-                if (i <= 3 && j <= 3)
-                    std::cout << "(" << +red[i][j] << "," << +green[i][j] << "," << +blue[i][j] << ")\t";
+    ColourBitMapFile(bstream& is)
+    : BitMapFile(is), bitmap(height, std::vector<Pixel>(width)) {
+        if (depth != 24)
+            throw std::domain_error("Input file is a grayscale image");
+        for (bitmap_sz i = 0; i != height; ++i) {
+            for (bitmap_sz j = 0; j != width; ++j) {
+                uint8_t blue, green, red;
+                is >> blue >> green >> red;
+                bitmap[height - 1 - i][j] = std::tie(red, green, blue);
             }
-            if (i <= 3)
-                std::cout << "..." << std::endl;
-        }
-        std::cout << "." << std::endl << "." << std::endl << ".\t\t\t\t\t"
-                  << HEIGHT << " rows * " << WIDTH << " columns" << std::endl;
-
-        for (vec_sz i = 0; i != HEIGHT; ++i)                                    // Convert 24-bit image to grayscale
-            for (vec_sz j = 0; j != WIDTH; ++j)
-                grayscale[i][j] = (red[i][j]*0.2126 + green[i][j]*0.7152 + blue[i][j]*0.0722);   // BT.709 specification
-
-        // Update header specification for grayscale image
-        int PALETTE_SIZE = 4 * 256;
-        FILE_SIZE = (FILE_SIZE - IMG_SIZE) + IMG_SIZE/3 + PALETTE_SIZE;
-        DEPTH = DEPTH/3;
-        IMG_SIZE = IMG_SIZE/3;
-        PIXELARRAY_OFFSET += PALETTE_SIZE;
-    }
-
-    std::cout << "Grayscale Pixel Array (I):" << std::endl;                     // Print grayscale image
-    for (vec_sz i = 0; i != HEIGHT; ++i) {
-        for (vec_sz j = 0; j != WIDTH; ++j) {
-            if (i <= 3 && j <= 3)
-                std::cout << "(" << +grayscale[i][j] << ")\t";
-        }
-        if (i <= 3)
-            std::cout << "..." << std::endl;
-    }
-    std::cout << "." << std::endl << "." << std::endl << ".\t\t\t\t\t"
-              << HEIGHT << " rows * " << WIDTH << " columns" << std::endl;
-
-    obstream os(argv[2], std::ios::out|std::ios::binary);                       // Create output BMP file
-
-    os.seekp(0x00); os.write(&SIGNATURE[0], 2);                                 // Write the BITMAPFILEHEADER
-    os.seekp(0x02); os << FILE_SIZE           ;
-    os.seekp(0x0a); os << PIXELARRAY_OFFSET   ;
-
-    os << DIB_HEADER_SIZE << HEIGHT << WIDTH << PLANES <<DEPTH << COMPRESSION   // Write the BITMAPINFOHEADER
-       << IMG_SIZE << VERTICAL_RES << HORIZONTAL_RES << COLOR_PALETTE << IMP_COLORS;
-
-    os << null << null << null << null;                                         // Write the grayscale colour palette
-    for(uint8_t i = 1; i != 0; ++i) {
-        os << i << i << i << null;
-    }
-
-    for(vec_sz j = 0; j != WIDTH; ++j) {                                        // Iterate in a transpose fashion
-        for (vec_sz i = 0; i != HEIGHT; ++i) {
-            os << grayscale[i][WIDTH - 1 - j];
         }
     }
+};
+
+struct GrayScaleBitMapFile : public BitMapFile {
+    typedef uint8_t Pixel;
+    typedef std::vector<std::vector<Pixel>> BitMap;
+    typedef BitMap::size_type bitmap_sz;
+
+    BitMap bitmap;
+
+    GrayScaleBitMapFile(bstream& is)
+    : BitMapFile(is), bitmap(height, std::vector<Pixel>(width)) {
+        for (bitmap_sz i = 0; i != height; ++i)
+            for (bitmap_sz j = 0; j != width; ++j)
+                is >> bitmap[height - 1 - i][j];
+    }
+
+    GrayScaleBitMapFile(ColourBitMapFile bmp)
+    : BitMapFile(), bitmap(bmp.height, std::vector<Pixel>(bmp.width)) {
+        uint16_t paletteSize = 4 * 256;                                 // 256 colours * 4 channel
+        fileSize        = (bmp.fileSize - bmp.imageSize) + bmp.imageSize/3 + paletteSize;
+        pixelArrayOffset= bmp.pixelArrayOffset + paletteSize;
+
+        DIBHeaderSize   = bmp.DIBHeaderSize;
+        width           = bmp.width;
+        height          = bmp.height;
+        planes          = bmp.planes;
+        depth           = bmp.depth/3;
+        compression     = bmp.compression;
+        imageSize       = bmp.imageSize/3;
+        horizontalRes   = bmp.horizontalRes;
+        verticalRes     = bmp.verticalRes;
+        colorPalette    = bmp.colorPalette;
+        importantColors = bmp.importantColors;
+
+        for (bitmap_sz i = 0; i != height; ++i){                                    // Convert 24-bit image to grayscale
+            for (bitmap_sz j = 0; j != width; ++j){
+                GrayScaleBitMapFile::Pixel red, green, blue;
+                std::tie(red, green, blue) = bmp.bitmap[i][j];
+                bitmap[i][j] = (red * 0.2126 + green * 0.7152 + blue * 0.0722);     // BT.709 specification
+            }
+        }
+    }
+
+    void transpose() {
+        for (bitmap_sz i = 0; i != height; ++i)
+            for (bitmap_sz j = 0; j != i; ++j)
+                std::swap(bitmap[i][j], bitmap[j][i]);
+        std::swap(height, width);
+        std::swap(horizontalRes, verticalRes);
+    }
+
+    bstream& save(bstream& os) {
+        os.seekp(0x00); os.write(&signature[0], 2);                                 // Write the BITMAPFILEHEADER
+        os.seekp(0x02); os << fileSize           ;
+        os.seekp(0x0a); os << pixelArrayOffset   ;
+        os << DIBHeaderSize << width << height << planes << depth << compression    // Write the BitMapINFOHEADER
+           << imageSize << horizontalRes << verticalRes << colorPalette << importantColors;
+        os << null << null << null << null;                                         // Write the grayscale colour palette
+        for(uint8_t i = 1; i != 0; ++i)
+            os << i << i << i << null;
+        for (bitmap_sz i = 0; i != height; ++i)
+            for (bitmap_sz j = 0; j != width; ++j)
+                os << bitmap[height - 1 - i][j];
+        return os;
+    }
+};
+
+ColourBitMapFile& readBMP(char* input)
+{
+    bstream is(input, std::ios::in|std::ios::binary);                         // Open the input BMP file stream
+    if (!is.is_open())                                                        // Check if file can be opened
+        throw std::invalid_argument("Couldn't open input BitMap file");
+    ColourBitMapFile* colourBMP = new ColourBitMapFile(is);
+    colourBMP->printHeader();
     is.close();
+    return *colourBMP;
+}
+
+GrayScaleBitMapFile& convertFlipGrayScale(ColourBitMapFile& colourBMP)
+{
+    GrayScaleBitMapFile* grayscaleBMP = new GrayScaleBitMapFile(colourBMP);
+    grayscaleBMP->printHeader();
+    grayscaleBMP->transpose();
+    return *grayscaleBMP;
+}
+
+void writeBMP(char* output, GrayScaleBitMapFile& grayscaleBMP)
+{
+    bstream os(output, std::ios::out|std::ios::binary);                        // Open the output BMP file stream
+    grayscaleBMP.save(os);
     os.close();
+}
+
+
+int main(int argc, char* argv[])
+{
+    if (argc != 3) {                                                            // Check for commandline arguments
+        std::cout << "Incorrect arguments\n"
+                     "Usage: ./a.out <input image path> <output image path>\n"
+                     "For eg: ./a.out lena.bmp out.bmp";
+        return -1;
+    }
+
+    try {
+        ColourBitMapFile colourBMP = readBMP(argv[1]);
+        GrayScaleBitMapFile grayscaleBMP = convertFlipGrayScale(colourBMP);
+        writeBMP(argv[2], grayscaleBMP);
+    }
+    catch(...) {
+        std::cout << "Error reading BMP file" <<std::endl;
+        return -1;
+    }
+    std::cout << "Enter a key to exit" << std::endl;
+    std::string temp;
+    std::cin >> temp;
     return 0;
 }
