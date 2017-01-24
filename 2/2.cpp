@@ -37,9 +37,15 @@ void matchHistogram(cv::Mat& src, cv::Mat& dest, std::valarray<int>& refH_x)
 {
     auto size = src.size();
     std::valarray<int> H_x = getCumulativeHistogramNormalized(src);
-    for (auto i = 0; i != size.height; ++i)
+    for (auto i = 0; i != size.height; ++i) {
         for (auto j = 0; j != size.width; ++j) {
-            dest.at<uint8_t>(i, j) = *std::upper_bound(begin(refH_x), end(refH_x), H_x[src.at<uint8_t>(i, j)]);     // equalized(x,y) = H(image(x,y))
+            for (int k = 0; k != 256; ++k) {
+                if (refH_x[k] >= H_x[src.at<uint8_t>(i, j)]) {
+                    dest.at<uint8_t>(i, j) = k;
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -58,8 +64,15 @@ int main()
         std::cout << "Invalid input file\n" << std::endl;
         return main();
     }
-    else
+    else {
         cv::imshow("Original Image", input);
+        cv::Mat inputHist(512, 512, CV_8UC1, 255);
+        auto hist = getHistogram(input);
+        for (int i = 0; i != 256; i++)
+            cv::line(inputHist, cv::Point(2*i, 512), cv::Point(2*i, 512 - (512*hist[i]/hist.max())), 0);
+        cv::imshow("Input Histogram", inputHist);
+        cv::imwrite("histogram-" + inputFile, inputHist);
+    }
 
     std::valarray<int> refH_x(256);
     switch (choice) {
@@ -75,6 +88,12 @@ int main()
             return main();
         }
         refH_x = getCumulativeHistogramNormalized(ref);
+        cv::Mat refHist(512, 512, CV_8UC1, 255);
+        auto hist = getHistogram(ref);
+        for (int i = 0; i != 256; i++)
+            cv::line(refHist, cv::Point(2*i, 512), cv::Point(2*i, 512 - (512*hist[i]/hist.max())), 0);
+        cv::imshow("Reference Histogram", refHist);
+        cv::imwrite("histogram-ref-" + inputFile, refHist);
         break;
     }
     default:
@@ -95,6 +114,14 @@ int main()
         matchHistogram(input, input, refH_x);
     cv::imshow("Histogram Equalized/Matched Image", input);
     cv::imwrite("matched-" + inputFile, input);
+
+    cv::Mat outputHist(512, 512, CV_8UC1, 255);
+    auto hist = getHistogram(input);
+    for (int i = 0; i != 256; i++)
+        cv::line(outputHist, cv::Point(2*i, 512), cv::Point(2*i, 512 - (512*hist[i]/hist.max())), 0);
+    cv::imshow("Output Histogram", outputHist);
+    cv::imwrite("histogram-out-" + inputFile, outputHist);
+
     cv::waitKey(0);
 
     return 0;
