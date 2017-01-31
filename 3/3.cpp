@@ -1,5 +1,6 @@
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include <experimental/filesystem>
 #include <iostream>
@@ -178,6 +179,25 @@ Kernel SOBEL_D_3 = {
     { -2, -1,  0},
 };
 
+Kernel SOBEL_D_5 = {
+    {  0,  1,  2,  3,  4},
+    { -1,  0,  1,  2,  3},
+    { -2, -1,  0,  1,  2},
+    { -3, -2, -1,  0,  1},
+    { -4, -3, -2, -1,  0},
+};
+
+Kernel SOBEL_D_7 = {
+    {  0,  1,  2,  3,  4,  5,  6},
+    { -1,  0,  1,  2,  3,  4,  5},
+    { -2, -1,  0,  1,  2,  3,  4},
+    { -3, -2, -1,  0,  1,  2,  3},
+    { -4, -3, -2, -1,  0,  1,  2},
+    { -5, -4, -3, -2, -1,  0,  1},
+    { -6, -5, -4, -3, -2, -1,  0},
+};
+
+
 static void convolute(const cv::Mat &input, cv::Mat &output, Kernel h)
 {
     for (auto i = 0; i != output.rows; ++i) {
@@ -186,11 +206,11 @@ static void convolute(const cv::Mat &input, cv::Mat &output, Kernel h)
             for(auto k = 0; k != h.size(); ++k) {
                 for(auto l = 0; l != h.size(); ++l) {
                     sum += input.at<uint8_t>(i+k - h.size()/2, j+l - h.size()/2) * h[k][l];
-                    den += h[k][l];
+                    if (h[k][l] >= 0)                                               // Normalize the filter output
+                        den += h[k][l];                                             // using positive sum of the kernel
                 }
             }
-            if (!den) den = 1;
-            output.at<uint8_t>(i, j) = abs(sum/den);
+            output.at<uint8_t>(i, j) = abs(sum/den);                                // Use absolute value to flip negative gradients
         }
     }
 }
@@ -282,10 +302,18 @@ static void callBack(int, void*)
         }
         break;
     case FILTER::SOBEL_DIAGONAL:
-        filterText = "Sobel Diaogonal: ";
-        convolute(input, output, SOBEL_D_3); break;
+        filterText = "Sobel Diagonal: ";
+        switch (kernelPos) {
+            case KERNEL::THREE: kernel = "3"; convolute(input, output, SOBEL_D_3); break;
+            case KERNEL::FIVE : kernel = "5"; convolute(input, output, SOBEL_D_5); break;
+            case KERNEL::SEVEN: kernel = "7"; convolute(input, output, SOBEL_D_7); break;
+        }
+        break;
     }
     cv::hconcat(input, output, display);
+    std::string text(filterText + "Kernel=" + kernel);
+    cv::putText(display, text, cv::Point(768, 20), cv::FONT_HERSHEY_PLAIN, 1, 0);
+    cv::putText(display, text, cv::Point(768, 50), cv::FONT_HERSHEY_PLAIN, 1, 255);
     cv::imshow("Spatial Filtering", display);
 }
 
