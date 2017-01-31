@@ -100,7 +100,7 @@ int main()
     for (auto& file: fs::recursive_directory_iterator(".")) {
         std::string imagePath(static_cast<std::string>(file.path()));
         if (imagePath.find(".jpg") != std::string::npos) {
-            unfiltered.push_back(cv::imread(imagePath));
+            unfiltered.push_back(cv::imread(imagePath, cv::IMREAD_GRAYSCALE));
         }
     }
 
