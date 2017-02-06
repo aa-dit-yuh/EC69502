@@ -16,27 +16,13 @@ const auto PI = std::acos(-1);
 auto images = std::vector<cv::Mat>();
 int imagePos, filterPos, freqPos;
 
-namespace Filter {
-    enum class LowPass {
-        Ideal=0,
-        Gaussian,
-        Butterworth,
-    };
-    enum class HighPass {
-        Ideal=3,
-        Gaussian,
-        Butterworth,
-    };
-};
 
 namespace FFT {
-    valarray<Complex> transform(valarray<Complex> x)
+    valarray<Complex> transform(const valarray<Complex> x)
     {
         auto n = x.size();
         auto X = valarray<Complex>(n);
-        if (n == 1) {
-            return x;
-        }
+        if (n == 1) return x;
         auto even = FFT::transform(x[slice(0, n/2, 2)]);
         auto odd  = FFT::transform(x[slice(1, n/2, 2)]);
         for (auto k = 0; k != n/2; k++) {
@@ -65,7 +51,7 @@ namespace FFT {
         return X;
     }
 
-    valarray<valarray<Complex>> transform2d(cv::Mat x)
+    valarray<valarray<Complex>> transform2d(const cv::Mat x)
     {
         auto X = valarray<valarray<Complex>>(valarray<Complex>(N), N);
         for (auto i = 0; i != N; ++i) {
@@ -79,6 +65,17 @@ namespace FFT {
             X[i] = FFT::transform(X[i]);
         }
         return FFT::transpose(X);
+    }
+
+    valarray<valarray<Complex>> shift2d(const valarray<valarray<Complex>> &X)
+    {
+        auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
+        for (auto i = 0; i != N; ++i) {
+            for (auto j = 0; j != N; ++j) {
+                ret[(N/2 + i)%N][(N/2 + j)%N] = log(1 + abs(X[i][j]));
+            }
+        }
+        return ret;
     }
 
     cv::Mat inverseTransform2d(valarray<valarray<Complex>> X)
@@ -102,12 +99,157 @@ namespace FFT {
         }
         return x;
     }
+
+    cv::Mat toMat(const valarray<valarray<Complex>> &X)
+    {
+        auto x = cv::Mat(N, N, CV_8UC1);
+        for (auto i = 0; i != N; ++i) {
+            for (auto j = 0; j != N; ++j) {
+                x.at<uint8_t>(i, j) = 255/18 * static_cast<uint8_t>(X[i][j].real());
+            }
+        }
+        return x;
+    }
 }
+
+namespace Filter {
+    namespace LowPass {
+        enum _ {
+            Ideal=0,
+            Gaussian,
+            Butterworth,
+        };
+
+        valarray<valarray<Complex>> ideal(const valarray<valarray<Complex>> X, int cutoff)
+        {
+            auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
+            for (auto i = 0; i != N; ++i) {
+                for (auto j = 0; j != N; ++j) {
+                    if (abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2)) > cutoff) {
+                        ret[i][j] = 0;
+                    }
+                    else {
+                        ret[i][j] = X[i][j];
+                    }
+                }
+            }
+            return ret;
+        }
+
+        valarray<valarray<Complex>> gaussian(const valarray<valarray<Complex>> X, int stdDev)
+        {
+            auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
+            for (auto i = 0; i != N; ++i) {
+                for (auto j = 0; j != N; ++j) {
+                    ret[i][j] = X[i][j] *
+                        exp(-(pow((N/2 + i)%N - N/2, 2) + pow((N/2 + j)%N - N/2, 2))/(2*pow(stdDev, 2)));
+                }
+            }
+            return ret;
+        }
+
+        valarray<valarray<Complex>> butterworth(const valarray<valarray<Complex>> X, int cutoff)
+        {
+            auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
+            for (auto i = 0; i != N; ++i) {
+                for (auto j = 0; j != N; ++j) {
+                    ret[i][j] = X[i][j] /
+                        (1 + pow(abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2))/cutoff, 4));
+                }
+            }
+            return ret;
+        }
+    };
+    namespace HighPass {
+        enum _ {
+            Ideal=3,
+            Gaussian,
+            Butterworth,
+        };
+
+        valarray<valarray<Complex>> ideal(const valarray<valarray<Complex>> X, int cutoff)
+        {
+            auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
+            for (auto i = 0; i != N; ++i) {
+                for (auto j = 0; j != N; ++j) {
+                    if (abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2)) > cutoff) {
+                        ret[i][j] = X[i][j];
+                    }
+                    else {
+                        ret[i][j] = 0;
+                    }
+                }
+            }
+            return ret;
+        }
+
+        valarray<valarray<Complex>> gaussian(const valarray<valarray<Complex>> X, int stdDev)
+        {
+            auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
+            for (auto i = 0; i != N; ++i) {
+                for (auto j = 0; j != N; ++j) {
+                    ret[i][j] = X[i][j] *
+                        (1 - exp(-(pow((N/2 + i)%N - N/2, 2) + pow((N/2 + j)%N - N/2, 2))/(2*pow(stdDev, 2))));
+                }
+            }
+            return ret;
+        }
+
+        valarray<valarray<Complex>> butterworth(const valarray<valarray<Complex>> X, int cutoff)
+        {
+            auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
+            for (auto i = 0; i != N; ++i) {
+                for (auto j = 0; j != N; ++j) {
+                    ret[i][j] = X[i][j] * pow(abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2))/cutoff, 4) /
+                        (1 + pow(abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2))/cutoff, 4));
+                }
+            }
+            return ret;
+        }
+    };
+};
 
 static void callBack(int, void*)
 {
-    auto display = cv::Mat(), input = images.at(imagePos);
-    auto output = FFT::inverseTransform2d(FFT::transform2d(input));
+    auto display = cv::Mat();
+    auto input = images.at(imagePos);
+    auto inputFFT = FFT::transform2d(input);
+
+    auto output  = cv::Mat();
+    auto outputFFT = valarray<valarray<Complex>>();
+
+    switch(filterPos) {
+    case Filter::LowPass::Ideal:
+        outputFFT = Filter::LowPass::ideal(inputFFT, 20*(freqPos + 1));
+        break;
+    case Filter::HighPass::Ideal:
+        outputFFT = Filter::HighPass::ideal(inputFFT, 20*(freqPos + 1));
+        break;
+    case Filter::LowPass::Gaussian:
+        outputFFT = Filter::LowPass::gaussian(inputFFT, 20*(freqPos + 1));
+        break;
+    case Filter::HighPass::Gaussian:
+        outputFFT = Filter::HighPass::gaussian(inputFFT, 20*(freqPos + 1));
+        break;
+    case Filter::LowPass::Butterworth:
+        outputFFT = Filter::LowPass::butterworth(inputFFT, 10*(freqPos + 1));
+        break;
+    case Filter::HighPass::Butterworth:
+        outputFFT = Filter::HighPass::butterworth(inputFFT, 10*(freqPos + 1));
+        break;
+    default:
+        outputFFT = inputFFT;
+    }
+    cv::vconcat(
+        input,
+        FFT::toMat(FFT::shift2d(inputFFT)),
+        input
+    );
+    cv::vconcat(
+        FFT::inverseTransform2d(outputFFT),
+        FFT::toMat(FFT::shift2d(outputFFT)),
+        output
+    );
     cv::hconcat(input, output, display);
     cv::imshow("Frequency Filtering", display);
 }
