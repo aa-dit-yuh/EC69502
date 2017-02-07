@@ -94,7 +94,7 @@ namespace FFT {
         X = FFT::transpose(X);
         for (auto i = 0; i != N; ++i) {
             for (auto j = 0; j != N; ++j) {
-                x.at<uint8_t>(N-1-i, N-1-j) = static_cast<uint8_t>((1i * conj(X[i][j])).real());
+                x.at<uint8_t>(N-1-i, N-1-j) = static_cast<uint8_t>(abs(1i * conj(X[i][j])));
             }
         }
         return x;
@@ -148,13 +148,13 @@ namespace Filter {
             return ret;
         }
 
-        valarray<valarray<Complex>> butterworth(const valarray<valarray<Complex>> X, int cutoff)
+        valarray<valarray<Complex>> butterworth(const valarray<valarray<Complex>> X, int cutoff, int order=1)
         {
             auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
             for (auto i = 0; i != N; ++i) {
                 for (auto j = 0; j != N; ++j) {
                     ret[i][j] = X[i][j] /
-                        (1 + pow(abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2))/cutoff, 4));
+                        (1 + pow(abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2))/cutoff, 2*order));
                 }
             }
             return ret;
@@ -195,13 +195,13 @@ namespace Filter {
             return ret;
         }
 
-        valarray<valarray<Complex>> butterworth(const valarray<valarray<Complex>> X, int cutoff)
+        valarray<valarray<Complex>> butterworth(const valarray<valarray<Complex>> X, int cutoff, int order=1)
         {
             auto ret = valarray<valarray<Complex>>(valarray<Complex>(N), N);
             for (auto i = 0; i != N; ++i) {
                 for (auto j = 0; j != N; ++j) {
-                    ret[i][j] = X[i][j] * pow(abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2))/cutoff, 4) /
-                        (1 + pow(abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2))/cutoff, 4));
+                    ret[i][j] = X[i][j] /
+                        (1 + pow(cutoff / abs(Complex((N/2 + i)%N - N/2, (N/2 + j)%N - N/2)), 2*order));
                 }
             }
             return ret;
@@ -232,13 +232,11 @@ static void callBack(int, void*)
         outputFFT = Filter::HighPass::gaussian(inputFFT, 20*(freqPos + 1));
         break;
     case Filter::LowPass::Butterworth:
-        outputFFT = Filter::LowPass::butterworth(inputFFT, 10*(freqPos + 1));
+        outputFFT = Filter::LowPass::butterworth(inputFFT, 20*(freqPos + 1));
         break;
     case Filter::HighPass::Butterworth:
-        outputFFT = Filter::HighPass::butterworth(inputFFT, 10*(freqPos + 1));
+        outputFFT = Filter::HighPass::butterworth(inputFFT, 20*(freqPos + 1));
         break;
-    default:
-        outputFFT = inputFFT;
     }
     cv::vconcat(
         input,
